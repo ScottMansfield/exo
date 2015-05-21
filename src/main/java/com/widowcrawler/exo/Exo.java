@@ -1,6 +1,6 @@
 package com.widowcrawler.exo;
 
-import com.widowcrawler.exo.model.SiteMap;
+import com.widowcrawler.exo.model.Sitemap;
 import com.widowcrawler.exo.parse.Parser;
 
 import java.io.InputStream;
@@ -10,11 +10,11 @@ import java.io.InputStream;
  */
 public class Exo {
 
-    public static SiteMap parse(String data) throws Exception {
+    public static Sitemap parse(String data) throws Exception {
         return new Parser().parse(data);
     }
 
-    public static SiteMap parse(InputStream inputStream) throws Exception {
+    public static Sitemap parse(InputStream inputStream) throws Exception {
         return new Parser().parse(inputStream);
     }
 }
