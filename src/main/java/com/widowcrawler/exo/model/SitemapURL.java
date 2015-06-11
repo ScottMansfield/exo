@@ -34,6 +34,7 @@ public class SitemapURL {
     private DateTime lastModified;
     private ChangeFreq changeFrequency;
     private Double priority;
+    private Boolean isMobileContent;
 
     public static class Builder {
         private SitemapURL building;
@@ -62,6 +63,11 @@ public class SitemapURL {
             return this;
         }
 
+        public Builder withIsMobileContent(Boolean isMobileContent) {
+            building.isMobileContent = isMobileContent;
+            return this;
+        }
+
         public SitemapURL build() {
             return building;
         }
@@ -83,5 +89,9 @@ public class SitemapURL {
 
     public Double getPriority() {
         return priority;
+    }
+
+    public Boolean isMobileContent() {
+        return isMobileContent;
     }
 }
