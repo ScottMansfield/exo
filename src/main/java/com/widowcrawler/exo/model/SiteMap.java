@@ -31,4 +31,14 @@ public class Sitemap {
     public Set<SitemapURL> getUrls() {
         return urls;
     }
+
+    public Sitemap merge(Sitemap other) {
+        if (other == null || other.getUrls() == null) {
+            return this;
+        }
+
+        urls.addAll(other.getUrls());
+
+        return this;
+    }
 }
