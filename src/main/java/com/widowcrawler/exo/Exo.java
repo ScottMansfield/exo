@@ -18,7 +18,13 @@ package com.widowcrawler.exo;
 
 import com.widowcrawler.exo.model.Sitemap;
 import com.widowcrawler.exo.parse.Parser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.Invocation;
+import javax.xml.stream.XMLStreamException;
+import java.io.IOException;
 import java.io.InputStream;
 
 /**
@@ -26,11 +32,29 @@ import java.io.InputStream;
  */
 public class Exo {
 
-    public static Sitemap parse(String data) throws Exception {
-        return new Parser().parse(data);
+    private static final Logger logger = LoggerFactory.getLogger(Exo.class);
+
+    public static Sitemap parse(String url) throws SitemapParseException, IOException {
+        try {
+            Invocation invocation = ClientBuilder.newClient().target(url).request().buildGet();
+
+            String data = invocation.invoke().readEntity(String.class);
+
+            return new Parser().parse(data);
+
+        } catch (XMLStreamException ex) {
+            logger.error("Error reading XML stream", ex);
+            throw new IOException("Error reading XML stream", ex);
+        }
     }
 
-    public static Sitemap parse(InputStream inputStream) throws Exception {
-        return new Parser().parse(inputStream);
+    public static Sitemap parse(InputStream inputStream) throws SitemapParseException, IOException {
+        try {
+            return new Parser().parse(inputStream);
+
+        } catch (XMLStreamException ex) {
+            logger.error("Error reading XML stream", ex);
+            throw new IOException("Error reading XML stream", ex);
+        }
     }
 }
