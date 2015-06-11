@@ -16,22 +16,25 @@
 
 package com.widowcrawler.exo.parse;
 
+import com.widowcrawler.exo.Exo;
 import com.widowcrawler.exo.SitemapParseException;
 import com.widowcrawler.exo.model.ChangeFreq;
 import com.widowcrawler.exo.model.Sitemap;
 import com.widowcrawler.exo.model.SitemapURL;
+import com.widowcrawler.exo.retry.Retry;
+import com.widowcrawler.exo.retry.RetryFailedException;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
+import javax.xml.stream.*;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -44,8 +47,28 @@ import java.util.Set;
  *     lastmod - Date/Time
  *     changefreq - ChangeFreq
  *     priority - Double
+ *
+ * sitemapindex
+ *   sitemap
+ *     loc - URI (required)
+ *     lastmod - Date/Time
  */
 public class Parser {
+
+    private static final Logger logger = LoggerFactory.getLogger(Parser.class);
+
+    private static final String URLSET_TAG_NAME = "urlset";
+    private static final String SITEMAPINDEX_TAG_NAME = "sitemapindex";
+
+    private static final String URL_TAG_NAME = "url";
+    private static final String SITEMAP_TAG_NAME = "sitemap";
+
+    private static final String LOC_TAG_NAME = "loc";
+    private static final String LASTMOD_TAG_NAME = "lastmod";
+    private static final String CHANGEFREQ_TAG_NAME = "changefreq";
+    private static final String PRIORITY_TAG_NAME = "priority";
+
+    private static final String MOBILE_TAG_NAME = "mobile";
 
     private static String getEventTypeString(int eventType) {
         switch (eventType) {
@@ -76,7 +99,19 @@ public class Parser {
         URL_PROP_LOC,
         URL_PROP_LASTMOD,
         URL_PROP_CHANGEFREQ,
-        URL_PROP_PRIORITY
+        URL_PROP_PRIORITY,
+        URL_PROP_MOBILE,
+        SITEMAPINDEX,
+        SITEMAP,
+        SITEMAP_PROP_LOC,
+        SITEMAP_PROP_LASTMOD
+    }
+
+    private String decorate(String message, Location location) {
+        message += " | Line " + location.getLineNumber();
+        message += " | Column " + location.getColumnNumber();
+
+        return message;
     }
 
     private State state = State.START;
@@ -88,8 +123,12 @@ public class Parser {
     public Sitemap parse(InputStream inputStream) throws XMLStreamException, SitemapParseException {
 
         final XMLStreamReader reader = XMLInputFactory.newInstance().createXMLStreamReader(inputStream, "utf-8");
+
+        final Sitemap retval = new Sitemap(new HashSet<>());
+
         final Set<SitemapURL> sitemapURLs = new HashSet<>();
         SitemapURL.Builder urlBuilder = null;
+        String urlContent = null;
 
         reader.getEventType();
 
@@ -97,14 +136,45 @@ public class Parser {
             switch (state) {
                 case START:
                     reader.nextTag();
-                    state = State.URLSET;
+
+                    if (StringUtils.equalsIgnoreCase(reader.getLocalName(), URLSET_TAG_NAME)) {
+                        state = State.URLSET;
+                    } else if (StringUtils.equalsIgnoreCase(reader.getLocalName(), SITEMAPINDEX_TAG_NAME)) {
+                        state = State.SITEMAPINDEX;
+                    } else {
+                        String message = "Invalid root element. Must be either urlset or sitemapindex";
+                        logger.error(message);
+                        throw new SitemapParseException(message);
+                    }
+
                     break;
 
+                case END:
+                    // consume all end tags
+                    if (reader.getEventType() != XMLStreamConstants.END_ELEMENT) {
+                        String message = decorate("There should be only one root element in each sitemap.xml", reader.getLocation());
+                        logger.error(message);
+                        throw new SitemapParseException(message);
+                    }
+
+                    reader.next();
+                    break;
+
+                /////////////////////
+                // URLSET Hierarchy
+                /////////////////////
                 case URLSET:
                     // If we're done with the URLs, we're done overall
                     if (reader.nextTag() == XMLStreamConstants.END_ELEMENT) {
                         state = State.END;
                         break;
+                    }
+
+                    // Check that we're entering into a <url> element
+                    if (!StringUtils.equalsIgnoreCase(reader.getLocalName(), URL_TAG_NAME)) {
+                        String message = "A <urlset> element can only contain <url> elements. Found: " + reader.getLocalName();
+                        logger.error(message);
+                        throw new SitemapParseException(message);
                     }
 
                     urlBuilder = new SitemapURL.Builder();
@@ -116,15 +186,14 @@ public class Parser {
 
                     if (reader.getEventType() == XMLStreamConstants.START_ELEMENT) {
                         switch (StringUtils.lowerCase(reader.getLocalName())) {
-                            case "loc": state = State.URL_PROP_LOC; break;
-                            case "lastmod": state = State.URL_PROP_LASTMOD; break;
-                            case "changefreq": state = State.URL_PROP_CHANGEFREQ; break;
-                            case "priority": state = State.URL_PROP_PRIORITY; break;
+                            case LOC_TAG_NAME:        state = State.URL_PROP_LOC;        break;
+                            case LASTMOD_TAG_NAME:    state = State.URL_PROP_LASTMOD;    break;
+                            case CHANGEFREQ_TAG_NAME: state = State.URL_PROP_CHANGEFREQ; break;
+                            case PRIORITY_TAG_NAME:   state = State.URL_PROP_PRIORITY;   break;
                             default:
-                                // on any other tag, ignore for now
-                                // throw new SitemapParseException("Unexpected tag in url: " + reader.getLocalName());
-                                // emulate other methods
-                                reader.getElementText();
+                                String message = "Unexpected tag in url: " + reader.getLocalName();
+                                logger.error(message);
+                                //throw new SitemapParseException(message);
                         }
                     } else if (reader.getEventType() == XMLStreamConstants.END_ELEMENT) {
                         // we're done collecting the data for this URL
@@ -136,12 +205,16 @@ public class Parser {
                     break;
 
                 case URL_PROP_LOC:
+                    urlContent = reader.getElementText();
+
                     try {
                         assert urlBuilder != null;
-                        urlBuilder.withLocation(new URL(StringUtils.trimToNull(reader.getElementText())));
+                        urlBuilder.withLocation(new URL(StringUtils.trimToNull(urlContent)));
+
                     } catch (MalformedURLException ex) {
-                        System.out.println(ex.getMessage());
-                        // nothing for now?
+                        String message = String.format("Malformed URL found: %s", urlContent);
+                        logger.error(message);
+                        throw new SitemapParseException(message);
                     }
                     state = State.URL;
                     break;
@@ -164,15 +237,88 @@ public class Parser {
                     state = State.URL;
                     break;
 
-                case END:
-                    // consume all end tags
-                    reader.next();
+                case URL_PROP_MOBILE:
+                    assert urlBuilder != null;
+                    urlBuilder.withIsMobileContent(true);
+
+                ///////////////////////////
+                // SITEMAPINDEX Hierarchy
+                ///////////////////////////
+                case SITEMAPINDEX:
+                    // If we're done with all the Sitemaps, we're done overall
+                    if (reader.nextTag() == XMLStreamConstants.END_ELEMENT) {
+                        state = State.END;
+                        break;
+                    }
+
+                    state = State.SITEMAP;
+                    break;
+
+                case SITEMAP:
+                    if (!StringUtils.equalsIgnoreCase(reader.getLocalName(), SITEMAP_TAG_NAME)) {
+                        throw new SitemapParseException("A <sitemapindex> element can only contain <sitemap> elements");
+                    }
+
+                    reader.nextTag();
+
+                    if (reader.getEventType() == XMLStreamConstants.START_ELEMENT) {
+                        switch (StringUtils.lowerCase(reader.getLocalName())) {
+                            case LOC_TAG_NAME:        state = State.URL_PROP_LOC;        break;
+                            case LASTMOD_TAG_NAME:    state = State.URL_PROP_LASTMOD;    break;
+                            default:
+                                throw new SitemapParseException("Unexpected tag in sitemap: " + reader.getLocalName());
+                        }
+                    } else if (reader.getEventType() == XMLStreamConstants.END_ELEMENT) {
+                        // we're done collecting the data for this URL
+                        assert urlBuilder != null;
+                        sitemapURLs.add(urlBuilder.build());
+                        urlBuilder = new SitemapURL.Builder();
+                        state = State.URLSET;
+                    }
+
+                case SITEMAP_PROP_LOC:
+                    urlContent = reader.getElementText();
+
+                    try {
+                        URL sitemapURL = new URL(StringUtils.trimToNull(urlContent));
+
+                        Sitemap temp = Retry.retry(() -> {
+                            try {
+                                return Exo.parse(sitemapURL.toString());
+                            } catch (Exception ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        });
+
+                        retval.merge(temp);
+
+                    } catch (MalformedURLException ex) {
+                        String message = String.format("Malformed URL found: %s", urlContent);
+                        logger.error(message);
+                        throw new SitemapParseException(message);
+
+                    } catch (InterruptedException e) {
+                        logger.warn("Thread interrupted while (re)trying");
+                        Thread.currentThread().interrupt();
+
+                    } catch (RetryFailedException e) {
+                        String message = String.format("Failed to retrieve sitemap of sitemap index at %s", urlContent);
+                        logger.error(message);
+                        throw new SitemapParseException(message);
+                    }
+
+                    state = State.URL;
+                    break;
+
+                case SITEMAP_PROP_LASTMOD:
+                    // Do nothing with this data for now
+                    reader.getElementText();
                     break;
             }
 
             //System.out.println(state);
         }
 
-        return new Sitemap(sitemapURLs);
+        return retval.merge(new Sitemap(sitemapURLs));
     }
 }
