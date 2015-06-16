@@ -15,9 +15,12 @@
  */
 
 apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'signing'
 
+group = 'com.widowcrawler'
 sourceCompatibility = 1.8
-version = '1.0'
+version = '0.1'
 
 repositories {
     mavenCentral()
@@ -38,4 +41,70 @@ dependencies {
     testCompile 'junit:junit:4.12'
     testCompile 'org.hamcrest:hamcrest-all:1.3'
     testRuntime 'org.slf4j:slf4j-simple:1.7.12'
+}
+
+// Publishing bits
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from tasks.javadoc.destinationDir
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            pom.project {
+                name 'Exo'
+                packaging 'jar'
+                description 'Exo is a parser for sitemap.xml files.'
+                url 'https://github.com/ScottMansfield/exo'
+
+                scm {
+                    url 'https://github.com/ScottMansfield/exo'
+                    connection 'scm:git@github.com:ScottMansfield/exo.git'
+                    developerConnection 'scm:git@github.com:ScottMansfield/exo.git'
+                }
+
+                licenses {
+                    license {
+                        name 'The Apache Software License, Version 2.0'
+                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'ScottMansfield'
+                        name 'Scott Mansfield'
+                        email 'sgmansf@gmail.com'
+                    }
+                }
+            }
+        }
+    }
 }
