@@ -28,6 +28,7 @@ import java.net.URL;
  *   lastmod - Date/Time
  *   changefreq - ChangeFreq
  *   priority - Double
+ *   isMobile - has mobile content
  */
 public class SitemapURL {
     private URL location;
@@ -74,6 +75,79 @@ public class SitemapURL {
     }
 
     private SitemapURL() { }
+
+    @Override
+    public int hashCode() {
+        int hash = 1;
+
+        if (location != null) {
+            hash *= 31 * location.hashCode();
+        }
+
+        if (lastModified != null) {
+            hash *= 23 * lastModified.hashCode();
+        }
+
+        if (changeFrequency != null) {
+            hash *= 67 * changeFrequency.hashCode();
+        }
+
+        if (priority != null) {
+            hash *= 47 * priority.hashCode();
+        }
+
+        if (isMobileContent != null) {
+            hash *= 13 * isMobileContent.hashCode();
+        }
+
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+
+        if (!(obj instanceof SitemapURL)) {
+            return false;
+        }
+
+        SitemapURL other = (SitemapURL) obj;
+
+        if ((this.location != null && !this.location.equals(other.getLocation())) ||
+                this.location == null && other.getLocation() != null) {
+            return false;
+        }
+
+        if ((this.lastModified != null && !this.lastModified.equals(other.getLastModified())) ||
+                this.lastModified == null && other.getLastModified() != null) {
+            return false;
+        }
+
+        if ((this.changeFrequency != null && !this.changeFrequency.equals(other.getChangeFrequency())) ||
+                (this.changeFrequency == null && other.getChangeFrequency() != null)) {
+            return false;
+        }
+
+        if ((this.priority != null && !this.priority.equals(other.getPriority())) ||
+                (this.priority == null && other.getPriority() != null)) {
+            return false;
+        }
+
+        if ((this.isMobileContent != null && !this.isMobileContent.equals(other.isMobileContent())) ||
+                (this.isMobileContent == null && other.isMobileContent() != null)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public String toString() {
+        return  "Location: " + this.location +
+                "\nLastModified: " + this.lastModified +
+                "\nChangeFrequency: " + this.changeFrequency +
+                "\nPriority: " + this.priority +
+                "\nIsMobileContent: " + this.isMobileContent;
+    }
 
     public URL getLocation() {
         return location;
