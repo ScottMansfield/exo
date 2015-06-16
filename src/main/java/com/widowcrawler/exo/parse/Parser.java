@@ -128,7 +128,7 @@ public class Parser {
 
         final Set<SitemapURL> sitemapURLs = new HashSet<>();
         SitemapURL.Builder urlBuilder = null;
-        String urlContent = null;
+        String urlContent;
 
         reader.getEventType();
 
@@ -185,15 +185,17 @@ public class Parser {
                     reader.nextTag();
 
                     if (reader.getEventType() == XMLStreamConstants.START_ELEMENT) {
+                        //logger.info("reader.getLocalName(): " + reader.getLocalName());
                         switch (StringUtils.lowerCase(reader.getLocalName())) {
                             case LOC_TAG_NAME:        state = State.URL_PROP_LOC;        break;
                             case LASTMOD_TAG_NAME:    state = State.URL_PROP_LASTMOD;    break;
                             case CHANGEFREQ_TAG_NAME: state = State.URL_PROP_CHANGEFREQ; break;
                             case PRIORITY_TAG_NAME:   state = State.URL_PROP_PRIORITY;   break;
+                            case MOBILE_TAG_NAME:     state = State.URL_PROP_MOBILE;     break;
                             default:
                                 String message = "Unexpected tag in url: " + reader.getLocalName();
                                 logger.error(message);
-                                //throw new SitemapParseException(message);
+                                throw new SitemapParseException(message);
                         }
                     } else if (reader.getEventType() == XMLStreamConstants.END_ELEMENT) {
                         // we're done collecting the data for this URL
@@ -240,6 +242,11 @@ public class Parser {
                 case URL_PROP_MOBILE:
                     assert urlBuilder != null;
                     urlBuilder.withIsMobileContent(true);
+                    // consume until "end tag" of self-closing tag
+                    // Also works if someone puts content in
+                    reader.getElementText();
+                    state = State.URL;
+                    break;
 
                 ///////////////////////////
                 // SITEMAPINDEX Hierarchy
@@ -263,8 +270,8 @@ public class Parser {
 
                     if (reader.getEventType() == XMLStreamConstants.START_ELEMENT) {
                         switch (StringUtils.lowerCase(reader.getLocalName())) {
-                            case LOC_TAG_NAME:        state = State.URL_PROP_LOC;        break;
-                            case LASTMOD_TAG_NAME:    state = State.URL_PROP_LASTMOD;    break;
+                            case LOC_TAG_NAME:     state = State.URL_PROP_LOC;     break;
+                            case LASTMOD_TAG_NAME: state = State.URL_PROP_LASTMOD; break;
                             default:
                                 throw new SitemapParseException("Unexpected tag in sitemap: " + reader.getLocalName());
                         }
